@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Database Manager - Async SQLAlchemy + Alembic (SQLite dev by default)
+Database Manager - Async SQLAlchemy with SQLite tuned to avoid greenlet usage paths.
 """
 import logging
 from typing import Optional, AsyncGenerator
@@ -25,6 +25,7 @@ class DatabaseManager:
                 'poolclass': StaticPool,
                 'connect_args': {'check_same_thread': False, 'timeout': 30}
             }
+        # IMPORTANT: avoid sync fallback paths; use create_async_engine always
         self.engine = create_async_engine(self.database_url, echo=False, **pool_kwargs)
         self.session_factory = async_sessionmaker(self.engine, class_=AsyncSession, expire_on_commit=False)
         await self._test_connection()
@@ -34,7 +35,7 @@ class DatabaseManager:
         assert self.engine is not None
         async with self.engine.begin() as conn:
             result = await conn.execute(text("SELECT 1"))
-            _ = result.scalar()
+            _ = result.scalar_one_or_none()
 
     @asynccontextmanager
     async def get_session(self) -> AsyncGenerator[AsyncSession, None]:
