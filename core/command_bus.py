@@ -26,8 +26,9 @@ class CommandHandler:
     states: Optional[List[str]] = None
 
 class CommandBus:
-    def __init__(self, user_manager: UserManager):
+    def __init__(self, user_manager: UserManager, rate_limiter=None):
         self.user_manager = user_manager
+        self.rate_limiter = rate_limiter
         self.logger = logging.getLogger(__name__)
         self.handlers: List[CommandHandler] = []
 
