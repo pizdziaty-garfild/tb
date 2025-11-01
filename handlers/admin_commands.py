@@ -1,17 +1,11 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 """
-Admin Commands - allow partial updates for Set Info (name/channel/group/welcome)
-Accepted inputs:
-- @nazwa
-- @kanal
-- @grupa
-- wiadomosc powitalna (dowolny tekst bez @)
-- CSV łączone: @nazwa,@kanal,@grupa,wiadomosc
+Admin Commands - safer partial updates for Set Info (no None checks on strings)
 """
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional
+from typing import Optional
 import logging
 
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
@@ -165,7 +159,6 @@ class AdminCommandsHandler:
         text = update.message.text.strip()
 
         if adm_ctx.awaiting == "set_info":
-            # Try CSV first
             parts = [p.strip() for p in text.split(",")]
             s = self.repo.get_settings()
             if len(parts) >= 4:
@@ -174,24 +167,15 @@ class AdminCommandsHandler:
                 self.repo.set_settings(s)
                 await update.message.reply_text("Zapisano dane info (CSV) ✅")
             else:
-                # Partial updates: @nazwa | @kanal | @grupa | free text (welcome)
-                if text.startswith("@"):
-                    # decide which field
-                    if "kanal" in s.info_channel or False:  # hint not reliable; use heuristics by user input
-                        pass
-                    # Heuristic: if contains '+' or 't.me', treat as channel/group link
-                    if "t.me" in text or "+" in text:
-                        # Accept as channel or group
-                        # If channel empty -> channel else -> group
-                        if not s.info_channel:
+                if text.startswith("@"):  # one of @nazwa/@kanal/@grupa
+                    if ("t.me" in text) or ("+" in text):
+                        if not (s.info_channel or ""):
                             s.info_channel = text
                         else:
                             s.info_group = text
                     else:
-                        # Treat as name if starts with @ and no link
                         s.info_name = text
                 else:
-                    # treat as welcome message
                     s.welcome_message = text
                 self.repo.set_settings(s)
                 await update.message.reply_text("Zapisano (częściowa aktualizacja) ✅")
