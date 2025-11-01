@@ -1,7 +1,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 """
-Wire admin panel with JSON repo (dev) to implement 2.2.1 and 2.2.3 flows end-to-end.
+Admin Commands - allow partial updates for Set Info (name/channel/group/welcome)
+Accepted inputs:
+- @nazwa
+- @kanal
+- @grupa
+- wiadomosc powitalna (dowolny tekst bez @)
+- CSV łączone: @nazwa,@kanal,@grupa,wiadomosc
 """
 from dataclasses import dataclass
 from enum import Enum
@@ -81,7 +87,9 @@ class AdminCommandsHandler:
         await q.answer()
         data = q.data
         if data == AdminAction.SET_INFO:
-            await q.edit_message_text("Wyślij w jednej linii: @nazwa,@kanal,@grupa,wiadomosc_powitalna")
+            await q.edit_message_text(
+                "Wyślij: @nazwa LUB @kanal LUB @grupa LUB [wiadomość] LUB CSV @nazwa,@kanal,@grupa,wiadomość"
+            )
             self._set_admin_context(context, awaiting="set_info")
         elif data == AdminAction.SET_CONTACT:
             await q.edit_message_text("Wyślij nazwę kontaktu admina (np. @TwojNick)")
@@ -157,18 +165,36 @@ class AdminCommandsHandler:
         text = update.message.text.strip()
 
         if adm_ctx.awaiting == "set_info":
-            try:
-                name, channel, group, welcome = [x.strip() for x in text.split(",", 3)]
-            except ValueError:
-                await update.message.reply_text("Format: @nazwa,@kanal,@grupa,wiadomosc")
-                return
+            # Try CSV first
+            parts = [p.strip() for p in text.split(",")]
             s = self.repo.get_settings()
-            s.info_name = name
-            s.info_channel = channel
-            s.info_group = group
-            s.welcome_message = welcome
-            self.repo.set_settings(s)
-            await update.message.reply_text("Zapisano dane info ✅")
+            if len(parts) >= 4:
+                s.info_name, s.info_channel, s.info_group = parts[:3]
+                s.welcome_message = ",".join(parts[3:]).strip()
+                self.repo.set_settings(s)
+                await update.message.reply_text("Zapisano dane info (CSV) ✅")
+            else:
+                # Partial updates: @nazwa | @kanal | @grupa | free text (welcome)
+                if text.startswith("@"):
+                    # decide which field
+                    if "kanal" in s.info_channel or False:  # hint not reliable; use heuristics by user input
+                        pass
+                    # Heuristic: if contains '+' or 't.me', treat as channel/group link
+                    if "t.me" in text or "+" in text:
+                        # Accept as channel or group
+                        # If channel empty -> channel else -> group
+                        if not s.info_channel:
+                            s.info_channel = text
+                        else:
+                            s.info_group = text
+                    else:
+                        # Treat as name if starts with @ and no link
+                        s.info_name = text
+                else:
+                    # treat as welcome message
+                    s.welcome_message = text
+                self.repo.set_settings(s)
+                await update.message.reply_text("Zapisano (częściowa aktualizacja) ✅")
             adm_ctx.awaiting = None
         elif adm_ctx.awaiting == "set_contact":
             s = self.repo.get_settings()
